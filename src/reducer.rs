@@ -12,17 +12,13 @@ pub async fn incremental_summarization(
     messages: Vec<String>,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
     // Reverse messages and join with \n
-    let messages_joined = messages
-        .into_iter()
-        .rev()
-        .collect::<Vec<String>>()
-        .join("\n");
+    let messages_joined = messages.join("\n");
     //println!("messages_joined: {}", messages_joined);
     let prev_summary = context.as_deref().unwrap_or_default();
     // Taken from langchain
     let progresive_prompt = format!(
         r#"
-        Progressively summarize the lines of conversation provided, adding onto the previous summary returning a new summary. If the lines are meaningless just return NONE
+        Progressively summarize the lines of conversation provided, adding onto the previous summary returning a new summary. If the lines are meaningless just return NONE. If there are small details or keywords that it's important that the AI remembers, remeber to include them unchanged in the summary.
 
         EXAMPLE
         Current summary:
@@ -86,6 +82,10 @@ pub async fn handle_compaction(
         .arg(context_key.clone())
         .query_async(&mut conn)
         .await?;
+
+    let messages = messages.into_iter()
+        .rev()
+        .collect::<Vec<String>>();
 
     let new_context_result =
         incremental_summarization(state_clone.openai_client.clone(), context, messages).await;

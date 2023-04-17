@@ -32,6 +32,7 @@ pub async fn get_memory(
 
     let messages: Vec<MemoryMessage> = messages
         .into_iter()
+        .rev()
         .filter_map(|message| {
             let mut parts = message.splitn(2, ": ");
             match (parts.next(), parts.next()) {

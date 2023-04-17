@@ -11,7 +11,13 @@ pub async fn incremental_summarization(
     context: Option<String>,
     messages: Vec<String>,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
-    let messages_joined = messages.join("\n");
+    // Reverse messages and join with \n
+    let messages_joined = messages
+        .into_iter()
+        .rev()
+        .collect::<Vec<String>>()
+        .join("\n");
+    //println!("messages_joined: {}", messages_joined);
     let prev_summary = context.as_deref().unwrap_or_default();
     // Taken from langchain
     let progresive_prompt = format!(

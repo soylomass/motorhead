@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 
 mod memory;
 mod reducer;
-use memory::{delete_memory, get_memory, post_memory};
+use memory::{delete_memory, get_memory, post_memory, delete_last_messages};
 mod models;
 use models::AppState;
 mod healthcheck;
@@ -48,6 +48,7 @@ async fn main() -> io::Result<()> {
             .service(get_memory)
             .service(post_memory)
             .service(delete_memory)
+            .service(delete_last_messages)
             .app_data(web::JsonConfig::default().error_handler(|err, _req| {
                 error::InternalError::from_response(
                     "",

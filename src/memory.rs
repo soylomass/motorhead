@@ -1,8 +1,10 @@
 use actix_web::{delete, error, get, post, web, HttpResponse, Responder};
 use std::sync::Arc;
 use tokio;
+use std::convert::TryInto;
+use log::{warn, info};
 
-use crate::models::{AckResponse, AppState, MemoryMessage, MemoryMessages, MemoryResponse};
+use crate::models::{AckResponse, AppState, MemoryMessage, MemoryMessages, MemoryResponse, DeleteLastRequest};
 use crate::reducer::handle_compaction;
 
 #[get("/sessions/{session_id}/memory")]
@@ -126,4 +128,71 @@ pub async fn delete_memory(
     Ok(HttpResponse::Ok()
         .content_type("application/json")
         .json(response))
+}
+
+#[delete("/sessions/{session_id}/memory/last")]
+pub async fn delete_last_messages(
+    session_id: web::Path<String>,
+    web::Json(req): web::Json<DeleteLastRequest>,
+    redis: web::Data<redis::Client>,
+) -> actix_web::Result<impl Responder> {
+    let mut conn = redis
+        .get_tokio_connection_manager()
+        .await
+        .map_err(error::ErrorInternalServerError)?;
+
+    info!("Deleting last {} messages with text: {}", req.count, req.message_text);
+
+    // Retrieve the last message
+    let last_messages: Vec<String> = redis::Cmd::lrange(&*session_id, 0, (req.count - 1).try_into().unwrap())
+        .query_async(&mut conn)
+        .await
+        .map_err(error::ErrorInternalServerError)?;
+    
+    info!("Fetched messages with lrange: {:?}", last_messages);
+
+    if let Some(last_message) = last_messages.last() {
+        info!("Last message string: {}", last_message);
+
+        let mut parts = last_message.splitn(2, ": ");
+        let content = parts.nth(1).unwrap_or("");
+
+        // If the given message_text matches the content of the last message
+        if content == req.message_text {
+            info!("Message text matches, deleting last {} messages", req.count);
+
+            
+            let messages: Vec<String> = redis::Cmd::lrange(&*session_id, 0, -1)
+                .query_async(&mut conn)
+                .await
+                .map_err(error::ErrorInternalServerError)?;
+
+            info!("Current messages: {:?}", messages);
+
+            // Delete the last X messages using LTRIM
+            redis::Cmd::ltrim(&*session_id, (req.count).try_into().unwrap(), -1)
+                .query_async::<_, ()>(&mut conn)
+                .await
+                .map_err(error::ErrorInternalServerError)?;
+
+            // Show all stored messages
+            let messages: Vec<String> = redis::Cmd::lrange(&*session_id, 0, -1)
+                .query_async(&mut conn)
+                .await
+                .map_err(error::ErrorInternalServerError)?;
+
+            info!("Remaining messages: {:?}", messages);
+
+            let response = AckResponse { status: "Ok" };
+            return Ok(HttpResponse::Ok()
+                .content_type("application/json")
+                .json(response));
+        } else {
+            warn!("Message text mismatch: {} != {}", content, req.message_text);
+        }
+    } else {
+        warn!("No messages found in the list.");
+    }
+
+    Ok(HttpResponse::BadRequest().json(AckResponse { status: "Failed: Message text mismatch" }))
 }

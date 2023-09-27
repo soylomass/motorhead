@@ -37,6 +37,12 @@ pub struct AckResponse {
     pub status: &'static str,
 }
 
+#[derive(Deserialize)]
+pub struct DeleteLastRequest {
+    pub message_text: String,
+    pub count: i64, // Number of messages to be deleted
+}
+
 #[derive(Debug)]
 pub enum MotorheadError {
     RedisError(RedisError),
